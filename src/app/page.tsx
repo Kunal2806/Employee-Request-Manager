@@ -10,15 +10,15 @@ export default function Dashboard() {
   const [isRedirecting, setIsRedirecting] = useState(false);
 
 
-  console.log("role",role);
+  // console.log("role",role);
   
-  if (!role) {
-    window.location.reload();
-  }
+  // if (!role) {
+  //   window.location.reload();
+  // }
 
   useEffect(() => {
     if (!role) {
-      window.location.reload();
+      // window.location.reload();
       router.push("/auth/login");
       return;
     }

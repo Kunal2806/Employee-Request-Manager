@@ -40,7 +40,7 @@ export async function DELETE(
   try {
     const { id } = await params;
 
-    const deletedRequest = await db
+    await db
       .delete(employeeRequest)
       .where(eq(employeeRequest.id, id))
       .returning();

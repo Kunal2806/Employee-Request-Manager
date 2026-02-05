@@ -1,6 +1,6 @@
 import { Role } from "./validaton-schema";
 
-export const DEFAULT_LOGIN_REDIRECT: string = "/dashboard";
+export const DEFAULT_LOGIN_REDIRECT: string = "/";
 
 // Prefix for API authentication routes.
 export const apiAuthPrefix: string = "/api/auth";

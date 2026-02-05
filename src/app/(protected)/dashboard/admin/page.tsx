@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Search, Calendar, User, Clock, MapPin, Filter, X } from 'lucide-react';
+import { Search, Calendar, Filter, X } from 'lucide-react';
 import { signOut } from 'next-auth/react';
 
 // Types matching your Drizzle schema
@@ -205,7 +205,7 @@ export default function EmployeeRequestsPage() {
           <p className="text-slate-600">
             Manage time-off and work arrangements
           </p>
-          <p onClick={handleLogout} className='text-red-500'>
+          <p onClick={handleLogout} className='text-red-500 hover:cursor-pointer'>
               logout
           </p>
         </div>
@@ -418,7 +418,7 @@ export default function EmployeeRequestsPage() {
                 <span className="text-xs font-medium text-slate-600">Active filters:</span>
                 {searchQuery && (
                   <span className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 rounded-lg text-xs">
-                    Search: "{searchQuery}"
+                    {`Search: "{searchQuery}"`}
                     <button onClick={() => setSearchQuery('')}>
                       <X className="w-3 h-3" />
                     </button>

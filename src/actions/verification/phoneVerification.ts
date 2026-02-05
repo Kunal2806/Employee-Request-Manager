@@ -106,7 +106,7 @@ export async function verifyPhoneOTP(
     // Delete the OTP record
     await deletePhoneVerificationOTP(otpRecord.id);
 
-    revalidatePath("/dashboard");
+    revalidatePath("/");
 
     return { success: true };
   } catch (error) {

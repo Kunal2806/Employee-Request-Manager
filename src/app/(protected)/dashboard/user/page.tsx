@@ -28,7 +28,7 @@ export default function UserRequestsPage() {
   const [requests, setRequests] = useState<EmployeeRequest[]>([]);
   const [showNewRequestForm, setShowNewRequestForm] = useState(false);
   const [user, setUser] = useState<UserSession>({ name: '', email: '' });
-  const { data: session, status } = useSession();
+  const { data: session } = useSession();
   const userid = session?.user.id;
   // Form state
   const [formData, setFormData] = useState({
@@ -150,21 +150,21 @@ export default function UserRequestsPage() {
   };
 
   // Cancel request (if pending)
-  const handleCancelRequest = async (id: string) => {
-    if (!confirm('Are you sure you want to cancel this request?')) return;
+  // const handleCancelRequest = async (id: string) => {
+  //   if (!confirm('Are you sure you want to cancel this request?')) return;
 
-    try {
-      const response = await fetch(`/api/user/${userid}`, {
-        method: 'DELETE',
-      });
+  //   try {
+  //     const response = await fetch(`/api/user/${id}`, {
+  //       method: 'DELETE',
+  //     });
 
-      if (response.ok) {
-        fetchRequests();
-      }
-    } catch (err) {
-      console.error('Failed to cancel request:', err);
-    }
-  };
+  //     if (response.ok) {
+  //       fetchRequests();
+  //     }
+  //   } catch (err) {
+  //     console.error('Failed to cancel request:', err);
+  //   }
+  // };
 
   // Calculate days between dates
   const calculateDays = (startDate: string, endDate: string) => {
@@ -264,7 +264,7 @@ export default function UserRequestsPage() {
             <p className="text-slate-600">
               {`E-mail: ${user.email}`}
             </p>
-            <p onClick={handleLogout} className='text-red-500'>
+            <p onClick={handleLogout} className='text-red-500 hover:cursor-pointer'>
               logout
             </p>
           </div>
@@ -363,7 +363,7 @@ export default function UserRequestsPage() {
                   <p className="text-slate-600">{request.reason}</p>
                 </div>
 
-                {request.status === 'pending' && (
+                {/* {request.status === 'pending' && (
                   <div className="flex justify-end">
                     <button
                       onClick={() => handleCancelRequest(request.id)}
@@ -372,7 +372,7 @@ export default function UserRequestsPage() {
                       Cancel Request
                     </button>
                   </div>
-                )}
+                )} */}
               </div>
             ))
           )}

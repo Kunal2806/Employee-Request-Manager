@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Search, Calendar, Filter, X } from 'lucide-react';
-import { signOut } from 'next-auth/react';
+import { Calendar, Clock, Plus, X, CheckCircle, XCircle, AlertCircle, Search } from 'lucide-react';
+import { signOut, useSession } from 'next-auth/react';
 
 // Types matching your Drizzle schema
 type RequestStatus = 'accepted' | 'denied' | 'pending';
@@ -19,104 +19,139 @@ interface EmployeeRequest {
   status: RequestStatus;
 }
 
-export default function EmployeeRequestsPage() {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | RequestStatus>('all');
-  const [typeFilter, setTypeFilter] = useState<'all' | RequestType>('all');
-  const [fromDate, setFromDate] = useState('');
-  const [toDate, setToDate] = useState('');
-  const [requestData, setRequestData] = useState<EmployeeRequest[]>([]);
-  const [filterData, setFilterData] = useState<EmployeeRequest[]>([]);
+interface AdminSession {
+  name: string;
+  email: string;
+}
 
-  const fetchData = async () => {
+export default function AdminRequestsPage() {
+  const [requests, setRequests] = useState<EmployeeRequest[]>([]);
+  const [filteredRequests, setFilteredRequests] = useState<EmployeeRequest[]>([]);
+  const [admin, setAdmin] = useState<AdminSession>({ name: '', email: '' });
+  const { data: session } = useSession();
+
+  // Filter state
+  const [filters, setFilters] = useState({
+    status: 'all' as RequestStatus | 'all',
+    type: 'all' as RequestType | 'all',
+    search: '',
+    dateFrom: '',
+    dateTo: '',
+  });
+
+  // Fetch all requests
+  const fetchRequests = async () => {
     try {
-      const response = await fetch("/api/holidays");
+      const response = await fetch('/api/holidays');
       if (response.ok) {
         const data = await response.json();
-        setRequestData(data);
+        setRequests(data);
+        setFilteredRequests(data);
       }
     } catch (err) {
-      console.error('Failed to fetch data:', err);
+      console.error('Failed to fetch requests:', err);
     }
   };
 
   useEffect(() => {
-    fetchData();
-  }, []);
+    fetchRequests();
+    setAdmin({ name: session?.user.name || "", email: session?.user.email || "" });
+  }, [session]);
 
+  // Apply filters
   useEffect(() => {
-    let filtered = requestData;
+    let filtered = [...requests];
 
-    if (searchQuery.trim() !== "") {
-      filtered = filtered.filter((item) =>
-        item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        item.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        item.reason.toLowerCase().includes(searchQuery.toLowerCase())
+    // Status filter
+    if (filters.status !== 'all') {
+      filtered = filtered.filter(r => r.status === filters.status);
+    }
+
+    // Type filter
+    if (filters.type !== 'all') {
+      filtered = filtered.filter(r => r.type === filters.type);
+    }
+
+    // Search filter
+    if (filters.search) {
+      const searchLower = filters.search.toLowerCase();
+      filtered = filtered.filter(r =>
+        r.name.toLowerCase().includes(searchLower) ||
+        r.email.toLowerCase().includes(searchLower) ||
+        r.reason.toLowerCase().includes(searchLower) ||
+        getTypeLabel(r.type).toLowerCase().includes(searchLower)
       );
     }
 
-    if (statusFilter !== "all") {
-      filtered = filtered.filter((item) => item.status === statusFilter);
-    }
-
-    if (typeFilter !== "all") {
-      filtered = filtered.filter((item) => item.type === typeFilter);
-    }
-
-    if (fromDate && toDate) {
-      filtered = filtered.filter((item) => {
-        const requestStart = new Date(item.startDate);
-        const requestEnd = new Date(item.endDate);
-        const filterStart = new Date(fromDate);
-        const filterEnd = new Date(toDate);
+    // Date range filter - show requests that overlap with the selected date range
+    if (filters.dateFrom || filters.dateTo) {
+      filtered = filtered.filter(r => {
+        const requestStart = new Date(r.startDate);
+        const requestEnd = new Date(r.endDate);
         
-        return requestStart <= filterEnd && requestEnd >= filterStart;
+        // If only dateFrom is set, show requests that end on or after dateFrom
+        if (filters.dateFrom && !filters.dateTo) {
+          const fromDate = new Date(filters.dateFrom);
+          return requestEnd >= fromDate;
+        }
+        
+        // If only dateTo is set, show requests that start on or before dateTo
+        if (!filters.dateFrom && filters.dateTo) {
+          const toDate = new Date(filters.dateTo);
+          return requestStart <= toDate;
+        }
+        
+        // If both are set, show requests that overlap with the date range
+        if (filters.dateFrom && filters.dateTo) {
+          const fromDate = new Date(filters.dateFrom);
+          const toDate = new Date(filters.dateTo);
+          // Request overlaps if it starts before the range ends AND ends after the range starts
+          return requestStart <= toDate && requestEnd >= fromDate;
+        }
+        
+        return true;
       });
-    } else if (fromDate) {
-      filtered = filtered.filter(
-        (item) => new Date(item.endDate) >= new Date(fromDate)
-      );
-    } else if (toDate) {
-      filtered = filtered.filter(
-        (item) => new Date(item.startDate) <= new Date(toDate)
-      );
     }
 
-    setFilterData(filtered);
-  }, [requestData, searchQuery, statusFilter, typeFilter, fromDate, toDate]);
+    setFilteredRequests(filtered);
+  }, [filters, requests]);
 
+  // Handle filter changes
+  const handleFilterChange = (key: string, value: string) => {
+    setFilters(prev => ({ ...prev, [key]: value }));
+  };
+
+  // Clear all filters
+  const clearFilters = () => {
+    setFilters({
+      status: 'all',
+      type: 'all',
+      search: '',
+      dateFrom: '',
+      dateTo: '',
+    });
+  };
+
+  // Update request status (admin action)
   const updateRequestStatus = async (id: string, newStatus: RequestStatus) => {
     try {
       const response = await fetch(`/api/holidays/${id}`, {
-        method: "PATCH",
+        method: 'PATCH',
         headers: {
-          "Content-Type": "application/json",
+          'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ status: newStatus })
+        body: JSON.stringify({ status: newStatus }),
       });
 
       if (response.ok) {
-        fetchData();
+        fetchRequests();
       }
     } catch (err) {
       console.error('Failed to update status:', err);
     }
   };
 
-  // Clear all filters
-  const clearAllFilters = () => {
-    setSearchQuery('');
-    setStatusFilter('all');
-    setTypeFilter('all');
-    setFromDate('');
-    setToDate('');
-  };
-
-  // Check if any filters are active
-  const hasActiveFilters = searchQuery !== '' || statusFilter !== 'all' || 
-                          typeFilter !== 'all' || fromDate !== '' || toDate !== '';
-
-  // Calculate days between start and end date
+  // Calculate days between dates
   const calculateDays = (startDate: string, endDate: string) => {
     const start = new Date(startDate);
     const end = new Date(endDate);
@@ -125,20 +160,25 @@ export default function EmployeeRequestsPage() {
     return diffDays;
   };
 
-  // Calculate total duration for requests
-  const calculateTotalDuration = (requests: EmployeeRequest[]) => {
-    return requests.reduce((total, request) => {
-      return total + calculateDays(request.startDate, request.endDate);
-    }, 0);
-  };
-
   // Calculate stats
-  const totalRequests = requestData.length;
-  const pendingCount = requestData.filter(data => data.status === "pending").length;
-  const acceptedCount = requestData.filter(data => data.status === "accepted").length;
-  const deniedCount = requestData.filter(data => data.status === "denied").length;
-  const filteredDuration = calculateTotalDuration(filterData);
-  const totalDuration = calculateTotalDuration(requestData);
+  const totalRequests = requests.length;
+  const pendingCount = requests.filter(r => r.status === 'pending').length;
+  const acceptedCount = requests.filter(r => r.status === 'accepted').length;
+  const deniedCount = requests.filter(r => r.status === 'denied').length;
+  const approvedDays = filteredRequests
+    .filter(r => r.status === 'accepted')
+    .reduce((total, req) => total + calculateDays(req.startDate, req.endDate), 0);
+
+  const getStatusIcon = (status: RequestStatus) => {
+    switch (status) {
+      case 'pending':
+        return <AlertCircle className="w-4 h-4 text-amber-600" />;
+      case 'accepted':
+        return <CheckCircle className="w-4 h-4 text-emerald-600" />;
+      case 'denied':
+        return <XCircle className="w-4 h-4 text-rose-600" />;
+    }
+  };
 
   const getStatusBadgeStyle = (status: RequestStatus) => {
     switch (status) {
@@ -178,7 +218,7 @@ export default function EmployeeRequestsPage() {
   };
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
+    return new Date(dateString).toLocaleDateString('en-GB', {
       month: 'short',
       day: 'numeric',
       year: 'numeric',
@@ -188,8 +228,11 @@ export default function EmployeeRequestsPage() {
   const handleLogout = async () => {
     await signOut({ redirectTo: "/auth/login" });
   };
+
+  const hasActiveFilters = filters.status !== 'all' || filters.type !== 'all' || filters.search !== '' || filters.dateFrom !== '' || filters.dateTo !== '';
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-slate-100 p-6">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-slate-100 p-4">
       {/* Decorative background elements */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
         <div className="absolute -top-40 -right-40 w-80 h-80 bg-blue-400 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-blob"></div>
@@ -198,361 +241,270 @@ export default function EmployeeRequestsPage() {
 
       <div className="max-w-7xl mx-auto relative z-10">
         {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-4xl font-bold text-slate-800 mb-2">
-            Employee Requests
+        <div className="mb-6">
+          <h1 className="text-3xl font-bold text-slate-800 mb-1">
+            Admin Dashboard
           </h1>
-          <p className="text-slate-600">
-            Manage time-off and work arrangements
+          <p className="text-sm text-slate-600">
+            {admin.email}
           </p>
-          <p onClick={handleLogout} className='text-red-500 hover:cursor-pointer'>
-              logout
-          </p>
+          <button onClick={handleLogout} className='text-red-500 hover:text-red-600 text-xs font-medium mt-1'>
+            Logout
+          </button>
         </div>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-8">
-          <div className="bg-white rounded-2xl p-6 shadow-md border border-slate-200">
-            <div className="text-3xl font-bold text-blue-600 mb-1">{totalRequests}</div>
-            <div className="text-sm text-slate-600">Total Requests</div>
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
+          <div className="bg-white rounded-xl p-4 shadow-md border border-slate-200">
+            <div className="text-2xl font-bold text-blue-600 mb-0.5">{totalRequests}</div>
+            <div className="text-xs text-slate-600">Total Requests</div>
           </div>
-          <div className="bg-white rounded-2xl p-6 shadow-md border border-slate-200">
-            <div className="text-3xl font-bold text-amber-600 mb-1">{pendingCount}</div>
-            <div className="text-sm text-slate-600">Pending</div>
+          <div className="bg-white rounded-xl p-4 shadow-md border border-slate-200">
+            <div className="text-2xl font-bold text-amber-600 mb-0.5">{pendingCount}</div>
+            <div className="text-xs text-slate-600">Pending</div>
           </div>
-          <div className="bg-white rounded-2xl p-6 shadow-md border border-slate-200">
-            <div className="text-3xl font-bold text-emerald-600 mb-1">{acceptedCount}</div>
-            <div className="text-sm text-slate-600">Accepted</div>
+          <div className="bg-white rounded-xl p-4 shadow-md border border-slate-200">
+            <div className="text-2xl font-bold text-emerald-600 mb-0.5">{acceptedCount}</div>
+            <div className="text-xs text-slate-600">Approved</div>
           </div>
-          <div className="bg-white rounded-2xl p-6 shadow-md border border-slate-200">
-            <div className="text-3xl font-bold text-rose-600 mb-1">{deniedCount}</div>
-            <div className="text-sm text-slate-600">Denied</div>
+          <div className="bg-white rounded-xl p-4 shadow-md border border-slate-200">
+            <div className="text-2xl font-bold text-rose-600 mb-0.5">{deniedCount}</div>
+            <div className="text-xs text-slate-600">Denied</div>
           </div>
-          <div className="bg-white rounded-2xl p-6 shadow-md border border-slate-200">
-            <div className="text-3xl font-bold text-purple-600 mb-1">
-              {filteredDuration}
-              {hasActiveFilters && (
-                <span className="text-lg text-slate-400 ml-1">/ {totalDuration}</span>
-              )}
-            </div>
-            <div className="text-sm text-slate-600">
-              {hasActiveFilters ? 'Filtered Days / Total' : 'Total Days'}
-            </div>
+          <div className="bg-white rounded-xl p-4 shadow-md border border-slate-200">
+            <div className="text-2xl font-bold text-purple-600 mb-0.5">{approvedDays}</div>
+            <div className="text-xs text-slate-600">Approved Days</div>
           </div>
         </div>
 
-        {/* Filters Section */}
-        <div className="bg-white rounded-2xl p-6 shadow-md border border-slate-200 mb-6 space-y-4">
-          {/* Header with Clear Filters */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Filter className="w-5 h-5 text-slate-600" />
-              <h2 className="text-lg font-semibold text-slate-800">Filters</h2>
-            </div>
-            {hasActiveFilters && (
-              <button
-                onClick={clearAllFilters}
-                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
-              >
-                <X className="w-4 h-4" />
-                Clear All
-              </button>
-            )}
-          </div>
+        {/* Filters Bar */}
+        <div className="bg-white rounded-xl shadow-md border border-slate-200 mb-4 overflow-hidden">
+          <div className="p-3 space-y-3">
+            {/* First Row - Search and Quick Filters */}
+            <div className="flex items-center justify-between gap-3">
+              {/* Search */}
+              <div className="flex-1 max-w-md relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Search by name, email, or reason..."
+                  value={filters.search}
+                  onChange={(e) => handleFilterChange('search', e.target.value)}
+                  className="w-full pl-9 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-xs"
+                />
+              </div>
 
-          {/* Search */}
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-5 h-5" />
-            <input
-              type="text"
-              placeholder="Search by name, email, or reason..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all text-sm"
-            />
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery('')}
-                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-slate-600"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            )}
-          </div>
+              {/* Filter Toggle & Quick Filters */}
+              <div className="flex items-center gap-2">
+                {/* Status Quick Filter */}
+                <select
+                  value={filters.status}
+                  onChange={(e) => handleFilterChange('status', e.target.value)}
+                  className="px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs"
+                >
+                  <option value="all">All Status</option>
+                  <option value="pending">Pending</option>
+                  <option value="accepted">Approved</option>
+                  <option value="denied">Denied</option>
+                </select>
 
-          {/* Date Range */}
-          <div className="flex items-center gap-3 flex-wrap">
-            <span className="text-sm font-medium text-slate-700">Date Range:</span>
-            <div className="flex items-center gap-2 flex-1">
-              <input
-                type="date"
-                value={fromDate}
-                onChange={(e) => setFromDate(e.target.value)}
-                className="flex-1 px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all text-sm"
-              />
-              <span className="text-slate-500">to</span>
-              <input
-                type="date"
-                value={toDate}
-                onChange={(e) => setToDate(e.target.value)}
-                className="flex-1 px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all text-sm"
-              />
-            </div>
-            {(fromDate || toDate) && (
-              <button
-                onClick={() => {
-                  setFromDate('');
-                  setToDate('');
-                }}
-                className="text-sm text-slate-500 hover:text-slate-700"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            )}
-          </div>
+                {/* Type Quick Filter */}
+                <select
+                  value={filters.type}
+                  onChange={(e) => handleFilterChange('type', e.target.value)}
+                  className="px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs"
+                >
+                  <option value="all">All Types</option>
+                  <option value="holiday">Holiday</option>
+                  <option value="work_from_home">Work from Home</option>
+                  <option value="halfday">Half Day</option>
+                  <option value="other">Other</option>
+                </select>
 
-          {/* Status Filters */}
-          <div className="flex flex-wrap gap-2 items-center">
-            <span className="text-sm font-medium text-slate-700 mr-2">Status:</span>
-            <button
-              onClick={() => setStatusFilter('all')}
-              className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${
-                statusFilter === 'all'
-                  ? 'bg-blue-600 text-white shadow-md'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
-            >
-              All
-            </button>
-            <button
-              onClick={() => setStatusFilter('pending')}
-              className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${
-                statusFilter === 'pending'
-                  ? 'bg-amber-600 text-white shadow-md'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
-            >
-              Pending
-            </button>
-            <button
-              onClick={() => setStatusFilter('accepted')}
-              className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${
-                statusFilter === 'accepted'
-                  ? 'bg-emerald-600 text-white shadow-md'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
-            >
-              Accepted
-            </button>
-            <button
-              onClick={() => setStatusFilter('denied')}
-              className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${
-                statusFilter === 'denied'
-                  ? 'bg-rose-600 text-white shadow-md'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
-            >
-              Denied
-            </button>
-          </div>
-
-          {/* Type Filters */}
-          <div className="flex flex-wrap gap-2 items-center">
-            <span className="text-sm font-medium text-slate-700 mr-2">Type:</span>
-            <button
-              onClick={() => setTypeFilter('all')}
-              className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${
-                typeFilter === 'all'
-                  ? 'bg-blue-600 text-white shadow-md'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
-            >
-              All
-            </button>
-            <button
-              onClick={() => setTypeFilter('holiday')}
-              className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${
-                typeFilter === 'holiday'
-                  ? 'bg-blue-600 text-white shadow-md'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
-            >
-              Holiday
-            </button>
-            <button
-              onClick={() => setTypeFilter('work_from_home')}
-              className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${
-                typeFilter === 'work_from_home'
-                  ? 'bg-blue-600 text-white shadow-md'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
-            >
-              Work from Home
-            </button>
-            <button
-              onClick={() => setTypeFilter('halfday')}
-              className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${
-                typeFilter === 'halfday'
-                  ? 'bg-blue-600 text-white shadow-md'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
-            >
-              Half Day
-            </button>
-            <button
-              onClick={() => setTypeFilter('other')}
-              className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${
-                typeFilter === 'other'
-                  ? 'bg-blue-600 text-white shadow-md'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
-            >
-              Other
-            </button>
-          </div>
-
-          {/* Active Filters Display */}
-          {hasActiveFilters && (
-            <div className="pt-3 border-t border-slate-200">
-              <div className="flex flex-wrap gap-2 items-center">
-                <span className="text-xs font-medium text-slate-600">Active filters:</span>
-                {searchQuery && (
-                  <span className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 rounded-lg text-xs">
-                    {`Search: "{searchQuery}"`}
-                    <button onClick={() => setSearchQuery('')}>
-                      <X className="w-3 h-3" />
-                    </button>
-                  </span>
-                )}
-                {statusFilter !== 'all' && (
-                  <span className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 rounded-lg text-xs">
-                    Status: {statusFilter}
-                    <button onClick={() => setStatusFilter('all')}>
-                      <X className="w-3 h-3" />
-                    </button>
-                  </span>
-                )}
-                {typeFilter !== 'all' && (
-                  <span className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 rounded-lg text-xs">
-                    Type: {getTypeLabel(typeFilter)}
-                    <button onClick={() => setTypeFilter('all')}>
-                      <X className="w-3 h-3" />
-                    </button>
-                  </span>
-                )}
-                {fromDate && (
-                  <span className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 rounded-lg text-xs">
-                    From: {formatDate(fromDate)}
-                    <button onClick={() => setFromDate('')}>
-                      <X className="w-3 h-3" />
-                    </button>
-                  </span>
-                )}
-                {toDate && (
-                  <span className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 rounded-lg text-xs">
-                    To: {formatDate(toDate)}
-                    <button onClick={() => setToDate('')}>
-                      <X className="w-3 h-3" />
-                    </button>
-                  </span>
+                {/* Clear Filters */}
+                {hasActiveFilters && (
+                  <button
+                    onClick={clearFilters}
+                    className="px-2.5 py-1.5 text-xs text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors"
+                  >
+                    Clear
+                  </button>
                 )}
               </div>
+            </div>
+
+            {/* Second Row - Date Range Filter */}
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2 text-xs text-slate-600">
+                <Calendar className="w-3.5 h-3.5" />
+                <span className="font-medium">Filter by Date:</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="date"
+                  value={filters.dateFrom}
+                  onChange={(e) => handleFilterChange('dateFrom', e.target.value)}
+                  className="px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs"
+                  title="Show requests on or after this date"
+                />
+                <span className="text-slate-400 text-xs">to</span>
+                <input
+                  type="date"
+                  value={filters.dateTo}
+                  onChange={(e) => handleFilterChange('dateTo', e.target.value)}
+                  min={filters.dateFrom}
+                  className="px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs"
+                  title="Show requests on or before this date"
+                />
+              </div>
+              {(filters.dateFrom || filters.dateTo) && (
+                <span className="text-xs text-slate-500 italic">
+                  Showing requests within this range
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* Active Filters Indicator */}
+          {hasActiveFilters && (
+            <div className="px-3 pb-2 flex items-center gap-2 text-xs border-t border-slate-100 pt-2">
+              <span className="text-slate-500">Showing {filteredRequests.length} of {requests.length} requests</span>
             </div>
           )}
         </div>
 
-        {/* Requests List */}
-        <div className="space-y-4">
-          {filterData.map((request) => (
-            <div
-              key={request.id}
-              className="bg-white rounded-2xl p-6 shadow-md border border-slate-200 hover:shadow-lg transition-shadow"
-            >
-              <div className="flex items-start gap-4">
-                {/* Avatar */}
-                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-semibold text-lg flex-shrink-0">
-                  {request.name.split(' ').map(n => n[0]).join('')}
-                </div>
-
-                {/* Content */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-start justify-between gap-4 mb-3">
-                    <div>
-                      <h3 className="text-lg font-semibold text-slate-800">
-                        {request.name}
-                      </h3>
-                      <p className="text-sm text-slate-500">{request.email}</p>
-                    </div>
-                    <span
-                      className={`px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap ${getStatusBadgeStyle(
-                        request.status
-                      )}`}
-                    >
-                      {request.status.charAt(0).toUpperCase() + request.status.slice(1)}
-                    </span>
-                  </div>
-
-                  <div className="flex items-center gap-2 mb-3 flex-wrap">
-                    <span className="text-sm bg-blue-50 text-blue-700 px-3 py-1 rounded-lg border border-blue-200">
-                      {getTypeIcon(request.type)} {getTypeLabel(request.type)}
-                    </span>
-                    <span className="text-xs text-slate-500">
-                      {calculateDays(request.startDate, request.endDate)} {calculateDays(request.startDate, request.endDate) === 1 ? 'day' : 'days'}
-                    </span>
-                  </div>
-
-                  <p className="text-slate-700 mb-3">{request.reason}</p>
-
-                  <div className="flex items-center gap-4 text-sm text-slate-600 mb-4">
-                    <div className="flex items-center gap-1">
-                      <Calendar className="w-4 h-4" />
-                      <span>
-                        {formatDate(request.startDate)} – {formatDate(request.endDate)}
-                      </span>
-                    </div>
-                  </div>
-
-                  {request.status === 'pending' && (
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => updateRequestStatus(request.id, 'accepted')}
-                        className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors text-sm font-medium"
-                      >
-                        Accept
-                      </button>
-                      <button
-                        onClick={() => updateRequestStatus(request.id, 'denied')}
-                        className="px-4 py-2 bg-rose-600 text-white rounded-lg hover:bg-rose-700 transition-colors text-sm font-medium"
-                      >
-                        Deny
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          ))}
-
-          {/* Empty State */}
-          {filterData.length === 0 && (
-            <div className="bg-white rounded-2xl p-12 shadow-md border border-slate-200 text-center">
-              <Filter className="w-16 h-16 text-slate-300 mx-auto mb-4" />
+        {/* Requests Table */}
+        <div className="bg-white rounded-xl shadow-md border border-slate-200 ">
+          {filteredRequests.length === 0 ? (
+            <div className="p-12 text-center">
+              <Calendar className="w-16 h-16 text-slate-300 mx-auto mb-4" />
               <h3 className="text-xl font-semibold text-slate-800 mb-2">
-                No requests found
+                {hasActiveFilters ? 'No matching requests' : 'No requests yet'}
               </h3>
               <p className="text-slate-600 mb-4">
                 {hasActiveFilters 
-                  ? 'Try adjusting your filters to see more results'
+                  ? 'Try adjusting your filters' 
                   : 'No employee requests available at the moment'}
               </p>
-              {hasActiveFilters && (
-                <button
-                  onClick={clearAllFilters}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
-                >
-                  Clear All Filters
-                </button>
-              )}
+            </div>
+          ) : (
+            <div className="overflow-x-auto]">
+              <table className="w-full">
+                <thead className="bg-slate-50 border-b border-slate-200 sticky top-0 z-10">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">
+                      Employee
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">
+                      Type
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">
+                      Date Range
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">
+                      Days
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">
+                      Reason
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">
+                      Status
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200">
+                  {filteredRequests.map((request) => (
+                    <tr key={request.id} className="hover:bg-slate-50 transition-colors">
+                      {/* Employee Column */}
+                      <td className="px-4 py-3">
+                        <div>
+                          <div className="text-sm font-medium text-slate-800 truncate max-w-[150px]">
+                            {request.name}
+                          </div>
+                          <div className="text-xs text-slate-500 truncate max-w-[150px]">
+                            {request.email}
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* Type Column */}
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-lg">{getTypeIcon(request.type)}</span>
+                          <span className="text-xs font-medium text-slate-800">
+                            {getTypeLabel(request.type)}
+                          </span>
+                        </div>
+                      </td>
+
+                      {/* Date Range Column */}
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <div className="flex items-center gap-1.5 text-xs text-slate-600">
+                          <Calendar className="w-3.5 h-3.5" />
+                          <span>
+                            {formatDate(request.startDate)} – {formatDate(request.endDate)}
+                          </span>
+                        </div>
+                      </td>
+
+                      {/* Days Column */}
+                      <td className="px-4 py-3 whitespace-nowrap text-center">
+                        <span className="text-sm font-medium text-slate-800">
+                          {calculateDays(request.startDate, request.endDate)}
+                        </span>
+                      </td>
+
+                      {/* Reason Column */}
+                      <td className="px-4 py-3">
+                        <p className="text-xs text-slate-600 line-clamp-2 max-w-[200px]">
+                          {request.reason}
+                        </p>
+                      </td>
+
+                      {/* Status Column */}
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <div className="flex items-center gap-1.5">
+                          {getStatusIcon(request.status)}
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-xs font-medium ${getStatusBadgeStyle(
+                              request.status
+                            )}`}
+                          >
+                            {request.status.charAt(0).toUpperCase() + request.status.slice(1)}
+                          </span>
+                        </div>
+                      </td>
+
+                      {/* Actions Column */}
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        {request.status === 'pending' ? (
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              onClick={() => updateRequestStatus(request.id, 'accepted')}
+                              className="px-2.5 py-1 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors text-xs font-medium flex items-center gap-1"
+                            >
+                              <CheckCircle className="w-3.5 h-3.5" />
+                              Accept
+                            </button>
+                            <button
+                              onClick={() => updateRequestStatus(request.id, 'denied')}
+                              className="px-2.5 py-1 bg-rose-600 text-white rounded-lg hover:bg-rose-700 transition-colors text-xs font-medium flex items-center gap-1"
+                            >
+                              <XCircle className="w-3.5 h-3.5" />
+                              Deny
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-slate-400">-</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </div>

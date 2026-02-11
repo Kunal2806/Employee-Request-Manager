@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Calendar, Clock, Plus, X, CheckCircle, XCircle, AlertCircle, Filter, Search, Save } from 'lucide-react';
+import { Calendar, Clock, Plus, X, CheckCircle, XCircle, AlertCircle, Search, Save } from 'lucide-react';
 import { signOut, useSession } from 'next-auth/react';
 
 // Types matching your Drizzle schema

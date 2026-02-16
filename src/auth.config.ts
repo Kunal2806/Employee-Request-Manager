@@ -8,12 +8,12 @@ export default {
   providers: [
     Credentials({
       async authorize(credentials) {
-        const validation = LoginSchema.safeParse(credentials);
+        const validation = LoginSchema.safeParse(credentials)  ;
         if (!validation.success) {
           return null;
         }
 
-        const { email, password } = validation.data;
+        const { email, password } = validation.data; 
         const user = await findUserByEmail(email);
         if (!user || !user.password) {
           return null;

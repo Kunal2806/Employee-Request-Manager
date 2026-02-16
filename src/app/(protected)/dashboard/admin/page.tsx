@@ -161,10 +161,10 @@ export default function AdminRequestsPage() {
   };
 
   // Calculate stats
-  const totalRequests = requests.length;
-  const pendingCount = requests.filter(r => r.status === 'pending').length;
-  const acceptedCount = requests.filter(r => r.status === 'accepted').length;
-  const deniedCount = requests.filter(r => r.status === 'denied').length;
+  const totalRequests = filteredRequests.length;
+  const pendingCount = filteredRequests.filter(r => r.status === 'pending').length;
+  const acceptedCount = filteredRequests.filter(r => r.status === 'accepted').length;
+  const deniedCount = filteredRequests.filter(r => r.status === 'denied').length;
   const approvedDays = filteredRequests
     .filter(r => r.status === 'accepted')
     .reduce((total, req) => total + calculateDays(req.startDate, req.endDate), 0);
@@ -460,7 +460,7 @@ export default function AdminRequestsPage() {
                         className="flex-1 px-3 py-1.5 bg-rose-600 text-white rounded-lg hover:bg-rose-700 transition-colors text-xs font-medium flex items-center justify-center gap-1"
                       >
                         <XCircle className="w-3.5 h-3.5" />
-                        Deny
+                        De ny
                       </button>
                     </div>
                   )}
